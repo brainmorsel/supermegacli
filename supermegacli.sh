@@ -25,17 +25,18 @@ help_usage()
 	    help
 	    pd list
 	    pd count
-	    pd info DISK_ID...           Physical drive info.
+	    pd info PD_ID...              Physical drive info.
 	    pd missing show
-	    pd missing mark DISK_ID...
-	    pd missing replace ARRAY ROW DISK_ID...
+	    pd missing mark PD_ID...
+	    pd missing replace ARRAY ROW PD_ID...
 	    pd hotspare set DISK_ID...
-	    pd hotspare dedicated ARRAY DISK_ID...
-	    pd hotspare remove DISK_ID...
-	    vd show {list | DISK_ID...}  Virtual drive info.
-	    adp info                     Show adapter info.
-	    adp count                    Show adapters count.
-	    adp log                      Show adapter internal log.
+	    pd hotspare dedicated ARRAY PD_ID...
+	    pd hotspare remove PD_ID...
+	    vd list
+	    vd info VD_ID...              Virtual drive info.
+	    adp info                      Show adapter info.
+	    adp count                     Show adapters count.
+	    adp log                       Show adapter internal log.
 	EOF
 }
 
@@ -182,12 +183,12 @@ mega_cmd_pd_hotspare()
 mega_cmd_vd()
 {
   case "$1" in
-    show)
-      if [[ -z "$2" || "$2" == "list" ]] ;then
-        mega_cmd_vd_show_info all
-      else
-        mega_cmd_vd_show_info "$2"
-      fi
+    list)
+      mega_cmd_vd_show_list
+      ;;
+    info)
+      shift
+      mega_cmd_vd_show_info "$@"
       ;;
     *)
       help_usage
@@ -244,7 +245,7 @@ mega_run()
   if [[ "$OPT_DRY_RUN" -eq 1 ]] ;then
     echo ${MEGA_EXE} "$@" ${MEGA_FLAGS} 1>&2
   else
-    ${MEGA_EXE} "$@"
+    ${MEGA_EXE} "$@" ${MEGA_FLAGS}
   fi
 }
 
@@ -270,7 +271,8 @@ mega_cmd_pd_list()
     media_types["Hard Disk Device"] = "HDD"
 
     if (!hide_headers) {
-      print("ID\tType\tSize\t\tFW Ver\tMedia\tTemp\tErr\tPFC\tState")
+      FMT = "%6s  %4s  %10s  %6s  %5s  %4s  %5s  %3s  %16s\n"
+      printf FMT, "ID", "Type", "Size", "FW Ver", "Media", "Temp", "Err", "PFC", "State"
     }
   }
   {
@@ -288,13 +290,10 @@ mega_cmd_pd_list()
       pfc = d["Predictive Failure Count"]
       state = fmt_state(d["Firmware state"])
 
-      print( dev_id "\t" pd_type "\t" pd_size "\t" fw_ver "\t" media "\t" temp "\t" err "\t" pfc "\t" state)
+      printf FMT, dev_id, pd_type, pd_size, fw_ver, media, temp, err, pfc, state
       delete d
     }
     d[key] = value
-  }
-  END {
-
   }
   '
 }
@@ -358,6 +357,50 @@ mega_cmd_pd_hotspare_remove()
 {
   local pd_ids="$@"
   mega_run -PDHSP -Rmv -PhysDrv "[${pd_ids// /,}]" -a${MEGA_CTL_ID}
+}
+
+
+mega_cmd_vd_show_list()
+{
+  mega_run -LDInfo -Lall -a${MEGA_CTL_ID} | awk -v hide_headers=$OPT_HIDE_HEADERS -F':' '
+  function ltrim(s) { sub(/^[ \t\r\n]+/, "", s); return s }
+  function rtrim(s) { sub(/[ \t\r\n]+$/, "", s); return s }
+  function trim(s)  { return rtrim(ltrim(s)); }
+  function fmt_id(s) { split(s, a, " "); return a[1] }
+  function fmt_size(s) { split(s, a, " "); return a[1] a[2] }
+  function fmt_level(s) { split(s, a, ", "); s = a[1]; sub(/[^0-9]+/, "", s); return "R" s }
+  BEGIN {
+    FMT = "%2s  %-10s  %2s  %10s  %-12s  %5s  %-3s  %6s  %2s  %2s  %-3s  %-6s\n"
+    if (!hide_headers) {
+      printf FMT, "ID", "Name", "Lv", "Size", "State", "Sctr", "Emu", "Strip", "N", "SD", "BB", "Cached"
+    }
+  }
+  {
+    key = trim($1)
+    value = trim($2)
+    
+    if (d["Virtual Drive"] && key == "") {
+      vd_id = fmt_id(d["Virtual Drive"])
+      name = d["Name"]
+      level = fmt_level(d["RAID Level"])
+      size = fmt_size(d["Size"])
+      sector_size = d["Sector Size"]
+      is_emulated = d["Is VD emulated"]
+      state = d["State"]
+      strip_size = fmt_size(d["Strip Size"])
+      drives_num = d["Number Of Drives"]
+      span_depth = d["Span Depth"]
+      if (span_depth > 1)
+        drives_num = d["Number Of Drives per span"] * span_depth
+      bad_blocks = d["Bad Blocks Exist"]
+      cached = d["Is VD Cached"]
+
+      printf FMT, vd_id, name, level, size, state, sector_size, is_emulated, strip_size, drives_num, span_depth, bad_blocks, cached
+      delete d
+    }
+    d[key] = value
+  }
+  '
 }
 
 
