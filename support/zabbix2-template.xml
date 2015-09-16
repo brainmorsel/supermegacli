@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <zabbix_export>
     <version>2.0</version>
-    <date>2015-09-16T09:44:17Z</date>
+    <date>2015-09-16T12:21:37Z</date>
     <groups>
         <group>
             <name>Templates</name>
@@ -406,7 +406,7 @@
                             <type>0</type>
                         </trigger_prototype>
                         <trigger_prototype>
-                            <expression>{Template Agent LSI MegaRAID:lsimegaraid[{#PHYSNUM}, state].str(Online)}=0</expression>
+                            <expression>{Template Agent LSI MegaRAID:lsimegaraid[{#PHYSNUM}, state].str(Online)}=0 and {Template Agent LSI MegaRAID:lsimegaraid[{#PHYSNUM}, state].str(Hotspare)}=0</expression>
                             <name>LSIMegaRaid: {#PHYSNUM} state is not online on {HOST.NAME}</name>
                             <url/>
                             <status>0</status>
@@ -558,7 +558,7 @@
                     </item_prototypes>
                     <trigger_prototypes>
                         <trigger_prototype>
-                            <expression>{Template Agent LSI MegaRAID:lsimegaraid[{#VIRTNUM}, badblock].str(No)}=0</expression>
+                            <expression>{Template Agent LSI MegaRAID:lsimegaraid[{#VIRTNUM}, badblock].str(No)}=0 and {Template Agent LSI MegaRAID:lsimegaraid[{#VIRTNUM}, badblock].strlen()}&gt;0</expression>
                             <name>LSIMegaRaid: {#VIRTNUM} Bad Blocks Exist on {HOST.NAME}</name>
                             <url/>
                             <status>0</status>
