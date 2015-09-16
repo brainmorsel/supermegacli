@@ -7,6 +7,8 @@ MEGA_EXE_VARIANTS=(
   "/opt/MegaRAID/MegaCli/MegaCli"
   "/opt/MegaRAID/MegaCli/MegaCli64"
 )
+MEGA_ZABBIX_CACHE="/tmp/supermegacli-zabbix.cache"
+MEGA_ZABBIX_CACHE_TTL=55  # seconds
 OWN_EXE="$0"
 
 
@@ -52,6 +54,11 @@ help_commands()
 	    adp count                     Show adapters count.
 	    adp info                      Show adapter info.
 	    adp log                       Show adapter internal log.
+
+	    zabbix check {ZBX_DRIVE ZBX_KEY|ZBX_DISCO_RULE}
+	                                  Interface for zabbix-agentd.
+	    zabbix sudoers                Generate sudoers config.
+	    zabbix config                 Generate zabbix-agentd config.
 
 	Legend:
 	    PD_LIST   Comma (or space) separated list of PDs.
@@ -115,6 +122,10 @@ main()
     adp)
       shift
       mega_cmd_adp "${@}"
+      ;;
+    zabbix)
+      shift
+      mega_cmd_zabbix "${@}"
       ;;
     help)
       if [[ "${OPT_INTERACTIVE}" -eq 1 ]] ;then
@@ -353,6 +364,23 @@ mega_cmd_adp()
    esac
 }
 
+mega_cmd_zabbix()
+{
+  case "$1" in
+    check)
+      shift
+      mega_cmd_zabbix_check "$@"
+      ;;
+    sudoers)
+      local script_path=$(readlink -f "${BASH_SOURCE[0]}")
+      echo "zabbix ALL=(ALL) NOPASSWD: ${script_path} zabbix check *"
+      ;;
+    config)
+      local script_path=$(readlink -f "${BASH_SOURCE[0]}")
+      echo "UserParameter=lsimegaraid[*],sudo ${script_path} zabbix check \$1 \$2"
+      ;;
+  esac
+}
 
 #------------------------------------------------------------------------------
 # Utility functions.
@@ -368,9 +396,9 @@ mega_detect()
       return 0
     fi
 
-    for viriant in "${MEGA_EXE_VARIANTS}" ;do
-      if [[ -x "$variant" ]] ;then
-        MEGA_EXE="${variant}"
+    for v in "${MEGA_EXE_VARIANTS[@]}" ;do
+      if [[ -x "$v" ]] ;then
+        MEGA_EXE="${v}"
         return 0
       fi
     done
@@ -509,6 +537,103 @@ mega_cmd_adp_show_count()
   mega_run -adpCount | awk '
   /Controller Count/ { sub(/[^0-9]+/, "", $3); print $3 }
   '
+}
+
+mega_cmd_zabbix_check()
+{
+  if [[ -n "$1" && -z "$2" ]] ;then
+    mega_cmd_zabbix_discovery "$1"
+  elif [[ -n "$1" && -n "$2" ]] ;then
+    local drive="$1"
+    local metric="$2"
+
+    local cachetime=0
+    if [[ -s "${MEGA_ZABBIX_CACHE}" ]] ;then
+      cachetime=$(stat -c %Y "${MEGA_ZABBIX_CACHE}")
+    fi
+
+    if [[ $(( $(date +%s) - $cachetime )) -gt "${MEGA_ZABBIX_CACHE_TTL}" ]] ;then
+      mega_cmd_zabbix_write_cache
+    fi
+
+    awk -F':' "/${drive} ${metric}/ { print \$2 }" "${MEGA_ZABBIX_CACHE}"
+  else
+    exit 1
+  fi
+
+}
+
+mega_cmd_zabbix_discovery()
+{
+  case "$1" in
+    virtdiscovery)
+      mega_runa -LDInfo -LAll | awk '
+        BEGIN {
+          sep = " "
+          print "{ \"data\":["
+        }
+        /Virtual Drive:/ { 
+          printf "%s{\"{#VIRTNUM}\":\"VirtualDrive%d\"}\n", sep, $3
+          sep = ","
+        }
+        END { print "]}" }
+        '
+      ;;
+    physdiscovery)
+      mega_runa -PDList | awk '
+        BEGIN {
+          sep = " "
+          print "{ \"data\":["
+        }
+        /Slot Number:/ { 
+          printf "%s{\"{#PHYSNUM}\":\"DriveSlot%d\"}\n", sep, $3
+          sep = ","
+        }
+        END { print "]}" }
+        '
+      ;;
+  esac
+}
+
+mega_cmd_zabbix_write_cache()
+{
+  mega_runa -PDList | awk -F':' '
+    function ltrim(s) { sub(/^[ \t]+/, "", s); return s }
+    function rtrim(s) { sub(/[ \t]+$/, "", s); return s }
+    function trim(s)  { return rtrim(ltrim(s)); }
+    /Slot Number/              {slotcounter+=1; slot[slotcounter]=trim($2)}
+    /Inquiry Data/             {inquiry[slotcounter]=trim($2)}
+    /Firmware state/           {state[slotcounter]=trim($2)}
+    /Drive Temperature/        {temperature[slotcounter]=trim($2)}
+    /S.M.A.R.T/                {smart[slotcounter]=trim($2)}
+    /Media Error Count/        {mediaerror[slotcounter]=trim($2)}
+    /Other Error Count/        {othererror[slotcounter]=trim($2)}
+    /Predictive Failure Count/ {failurecount[slotcounter]=trim($2)}
+    END {
+      for (i=1; i<=slotcounter; i+=1) {
+        printf ( "DriveSlot%d inquiry:%s\n",slot[i], inquiry[i]);
+        printf ( "DriveSlot%d state:%s\n", slot[i], state[i]);
+        printf ( "DriveSlot%d temperature:%d\n", slot[i], temperature[i]);
+        printf ( "DriveSlot%d smart:%s\n", slot[i], smart[i]);
+        printf ( "DriveSlot%d mediaerror:%d\n", slot[i], mediaerror[i]);
+        printf ( "DriveSlot%d othererror:%d\n", slot[i], othererror[i]);
+        printf ( "DriveSlot%d failurecount:%d\n", slot[i], failurecount[i]);
+      }
+    }' > "${MEGA_ZABBIX_CACHE}"
+
+  mega_runa -LDInfo -LAll | awk -F':' '
+    function ltrim(s) { sub(/^[ \t]+/, "", s); return s }
+    function rtrim(s) { sub(/[ \t]+$/, "", s); return s }
+    function trim(s)  { return rtrim(ltrim(s)); }
+    /Virtual Drive:/ {drivecounter+=1; slot[drivecounter]=trim($2);}
+    /State/          {state[drivecounter]=trim($2)}
+    /Bad Blocks/     {badblock[drivecounter]=trim($2)}
+    END {
+      for (i=1; i<=drivecounter; i+=1) {
+        printf ( "VirtualDrive%d state:%s\n", slot[i], state[i]);
+        printf ( "VirtualDrive%d badblock:%s\n", slot[i], badblock[i]);
+      }
+    }' >> "${MEGA_ZABBIX_CACHE}"
 }
 
 
