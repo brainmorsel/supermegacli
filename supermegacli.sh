@@ -21,25 +21,43 @@ help_usage()
 	    -a=|--adapter=N         Adapter number or "all" (default 0).
 	    -h|--hide-headers       Don't show table headers.
 
-	Commands:
-	    help
-	    pd list
-	    pd count
-	    pd info PD_ID...              Physical drive info.
-	    pd missing show
-	    pd missing mark PD_ID...
-	    pd missing replace ARRAY ROW PD_ID...
-	    pd hotspare set DISK_ID...
-	    pd hotspare dedicated ARRAY PD_ID...
-	    pd hotspare remove PD_ID...
-	    vd list
-	    vd info VD_ID...              Virtual drive info.
-	    adp info                      Show adapter info.
-	    adp count                     Show adapters count.
-	    adp log                       Show adapter internal log.
 	EOF
+	help_commands
 }
 
+help_commands()
+{
+  cat >&2 <<- EOF
+	Commands:
+	    help
+	    pd count
+	    pd list
+	    pd info PD_LIST              Physical drive info.
+	    pd missing show
+	    pd missing mark PD_LIST
+	    pd missing replace ARRAY ROW PD_LIST
+	    pd hotspare set PD_LIST
+	    pd hotspare dedicated ARRAY PD_LIST
+	    pd hotspare remove PD_LIST
+	    pd online PD_LIST
+	    pd offline PD_LIST
+	    pd makegood PD_LIST
+	    pd rebuild {show|start|stop} PD_LIST
+	    pd clear {show|start|stop} PD_LIST
+	    pd locate {start|stop} PD_LIST
+	    pd remove {start|stop} PD_LIST
+	                                  Prepare drive to remove.
+	    vd list
+	    vd info VD                    Virtual drive info.
+	    adp count                     Show adapters count.
+	    adp info                      Show adapter info.
+	    adp log                       Show adapter internal log.
+
+	Legend:
+	    PD_LIST   Comma (or space) separated list of PDs.
+	    PD        Colon separated pair of enclosure id and slot number.
+	EOF
+}
 
 help_error()
 {
@@ -47,10 +65,8 @@ help_error()
   help_usage
 }
 
-
 main()
 {
-
   if ! mega_detect ;then
       echo -e "Warning: MegaCli executable not found.\n" >&2
   fi
@@ -76,12 +92,16 @@ main()
         ;;
       -*)
         help_error "Error: unknown option: $opt"
-        exit 1
         ;;
       *)
         # skip arguments
     esac
   done
+
+  if [[ -z "$1" ]] ;then
+    interact
+    exit
+  fi
   
   case "$1" in
     pd)
@@ -97,18 +117,35 @@ main()
       mega_cmd_adp "${@}"
       ;;
     help)
-      help_usage
+      if [[ "${OPT_INTERACTIVE}" -eq 1 ]] ;then
+        help_commands
+      else
+        help_usage
+      fi
       ;;
     *)
       help_error "Error: unknown command: $1"
-      exit 1
   esac
 }
 
+interact()
+{
+  OPT_INTERACTIVE=1
 
-#------------------------------------------------------------------------------
-# Command line parsing functions.
-#------------------------------------------------------------------------------
+  echo "Welcolme to SuperMegaCli. Type 'help' for list of commands."
+  while read -e -a cmds -p "supermegacli:${MEGA_CTL_ID}> "
+  do
+    if [[ "${cmds[0]}" == "exit" ]] ;then
+      break
+    fi
+    if [[ -n "${cmds[0]}" ]] ;then
+      main "${cmds[@]}"
+      history -s "${cmds[@]}"
+    fi
+  done
+  echo
+}
+
 mega_cmd_pd()
 {
   case "$1" in
@@ -120,7 +157,7 @@ mega_cmd_pd()
       ;;
     info)
       shift
-      mega_cmd_pd_info "${@}"
+      mega_runa -PDInfo -PhysDrv $(mega_physdrv "$@")
       ;;
     missing)
       shift
@@ -130,88 +167,189 @@ mega_cmd_pd()
       shift
       mega_cmd_pd_hotspare "${@}"
       ;;
+    online)
+      shift
+      mega_runa -PDOnline -PhysDrv $(mega_physdrv "$@")
+      ;;
+    offline)
+      shift
+      mega_runa -PDOffline -PhysDrv $(mega_physdrv "$@")
+      ;;
+    makegood)
+      shift
+      mega_runa -PDMakeGood -PhysDrv $(mega_physdrv "$@")
+      ;;
+    makejbod)
+      shift
+      mega_runa -PDMakeJBOD -PhysDrv $(mega_physdrv "$@")
+      ;;
+    rebuild)
+      shift
+      mega_cmd_pd_rebuild "$@"
+      ;;
+    clear)
+      shift
+      mega_cmd_pd_clear "$@"
+      ;;
+    locate)
+      shift
+      mega_cmd_pd_locate "$@"
+      ;;
+    remove)
+      shift
+      mega_cmd_pd_remove "$@"
+      ;;
     *)
       help_usage
-      exit 1
   esac
 }
-
 
 mega_cmd_pd_missing()
 {
   case "$1" in
     show)
-      mega_cmd_pd_missing_show
+      mega_runa -PdGetMissing
       ;;
     mark)
       shift
-      mega_cmd_pd_missing_mark "${@}"
+      mega_runa -PdMarkMissing -PhysDrv $(mega_physdrv "$@")
       ;;
     replace)
-      shift
-      mega_cmd_pd_missing_replace "${@}"
+      local array="$2"
+      local row="$3"
+      shift 3
+      mega_runa -PdReplaceMissing -PhysDrv $(mega_physdrv "$@") -Array ${array} -Row ${row}
       ;;
     *)
       help_usage
-      exit 1
   esac
 }
-
 
 mega_cmd_pd_hotspare()
 {
   case "$1" in
     set)
       shift
-      mega_cmd_pd_hotspare_set "${@}"
+      mega_runa -PDHSP -Set -PhysDrv $(mega_physdrv "$@")
       ;;
     dedicated)
-      shift
-      mega_cmd_pd_hotspare_dedicated "${@}"
+      local array="$2"
+      shift 2
+      mega_runa -PDHSP -Set -Dedicated -Array ${array} -PhysDrv $(mega_physdrv "$@")
       ;;
     remove)
       shift
-      mega_cmd_pd_hotspare_remove "${@}"
+      mega_runa -PDHSP -Rmv -PhysDrv $(mega_physdrv "$@")
       ;;
     *)
       help_usage
-      exit 1
   esac
 }
 
+mega_cmd_pd_rebuild()
+{
+  case "$1" in
+    show)
+      shift
+      mega_runa -PDRbld -ShowProg -PhysDrv $(mega_physdrv "$@")
+      ;;
+    start)
+      shift
+      mega_runa -PDRbld -Start -PhysDrv $(mega_physdrv "$@")
+      ;;
+    stop)
+      shift
+      mega_runa -PDRbld -Stop -PhysDrv $(mega_physdrv "$@")
+      ;;
+    *)
+      help_usage
+  esac
+}
+
+mega_cmd_pd_clear()
+{
+  case "$1" in
+    show)
+      shift
+      mega_runa -PDClear -ShowProg -PhysDrv $(mega_physdrv "$@")
+      ;;
+    start)
+      shift
+      mega_runa -PDClear -Start -PhysDrv $(mega_physdrv "$@")
+      ;;
+    stop)
+      shift
+      mega_runa -PDClear -Stop -PhysDrv $(mega_physdrv "$@")
+      ;;
+    *)
+      help_usage
+  esac
+}
+
+mega_cmd_pd_locate()
+{
+  case "$1" in
+    start)
+      shift
+      mega_runa -PdLocate -Start -PhysDrv $(mega_physdrv "$@")
+      ;;
+    stop)
+      shift
+      mega_runa -PdLocate -Stop -PhysDrv $(mega_physdrv "$@")
+      ;;
+    *)
+      help_usage
+  esac
+}
+
+mega_cmd_pd_remove()
+{
+  case "$1" in
+    start)
+      shift
+      mega_runa -PdPrpRmv -PhysDrv $(mega_physdrv "$@")
+      ;;
+    stop)
+      shift
+      mega_runa -PdPrpRmv -UnDo -PhysDrv $(mega_physdrv "$@")
+      ;;
+    *)
+      help_usage
+  esac
+}
 
 mega_cmd_vd()
 {
   case "$1" in
+    count)
+      mega_cmd_vd_count
+      ;;
     list)
-      mega_cmd_vd_show_list
+      mega_cmd_vd_list
       ;;
     info)
       shift
-      mega_cmd_vd_show_info "$@"
+      mega_runa -LDInfo -L"$1"
       ;;
     *)
       help_usage
-      exit 1
    esac
 }
-
 
 mega_cmd_adp()
 {
   case "$1" in
     info)
-      mega_cmd_adp_show_info
+      mega_runa -AdpAllInfo
       ;;
     count)
       mega_cmd_adp_show_count
       ;;
     log)
-      mega_cmd_adp_show_log
+      mega_runa -AdpAlILog
       ;;
     *)
       help_usage
-      exit 1
    esac
 }
 
@@ -249,13 +387,24 @@ mega_run()
   fi
 }
 
+mega_runa()
+{
+  mega_run "$@" -a${MEGA_CTL_ID}
+}
+
+mega_physdrv()
+{
+  local pd_ids="$@"
+  echo "[${pd_ids// /,}]"
+}
+
 
 #------------------------------------------------------------------------------
 # Command handle functions.
 #------------------------------------------------------------------------------
 mega_cmd_pd_list()
 {
-  mega_run -PDList -a${MEGA_CTL_ID} | awk -v hide_headers=$OPT_HIDE_HEADERS -F: '
+  mega_runa -PDList | awk -v hide_headers=$OPT_HIDE_HEADERS -F: '
   function ltrim(s) { sub(/^[ \t\r\n]+/, "", s); return s }
   function rtrim(s) { sub(/[ \t\r\n]+$/, "", s); return s }
   function trim(s)  { return rtrim(ltrim(s)); }
@@ -298,71 +447,16 @@ mega_cmd_pd_list()
   '
 }
 
-
-mega_cmd_pd_info()
-{
-  local pd_ids="$@"
-  mega_run -PDInfo -PhysDrv "[${pd_ids// /,}]" -a${MEGA_CTL_ID}
-}
-
-
 mega_cmd_pd_count()
 {
-  mega_run -PDGetNum -a${MEGA_CTL_ID} | awk -F': ' '
+  mega_runa -PDGetNum | awk -F': ' '
   /Number of Physical Drives/ { print $2 }
   '
 }
 
-
-mega_cmd_pd_missing_show()
+mega_cmd_vd_list()
 {
-  mega_run -PdGetMissing -a${MEGA_CTL_ID}
-}
-
-
-mega_cmd_pd_missing_mark()
-{
-  local pd_ids="$@"
-  mega_run -PdMarkMissing -PhysDrv "[${pd_ids// /,}]" -a${MEGA_CTL_ID}
-}
-
-
-mega_cmd_pd_missing_replace()
-{
-  local array="$1"
-  local row="$2"
-  shift 2
-  local pd_ids="$@"
-  mega_run -PdReplaceMissing -PhysDrv "[${pd_ids// /,}]" -Array $array -Row $row -a${MEGA_CTL_ID}
-}
-
-
-mega_cmd_pd_hotspare_set()
-{
-  local pd_ids="$@"
-  mega_run -PDHSP -Set -PhysDrv "[${pd_ids// /,}]" -a${MEGA_CTL_ID}
-}
-
-
-mega_cmd_pd_hotspare_dedicated()
-{
-    local array_id="$2"
-    shift
-    local pd_ids="$@"
-    mega_run -PDHSP -Set -Dedicated -Array${array_id} -PhysDrv "[${pd_ids// /,}]" -a${MEGA_CTL_ID}
-}
-
-
-mega_cmd_pd_hotspare_remove()
-{
-  local pd_ids="$@"
-  mega_run -PDHSP -Rmv -PhysDrv "[${pd_ids// /,}]" -a${MEGA_CTL_ID}
-}
-
-
-mega_cmd_vd_show_list()
-{
-  mega_run -LDInfo -Lall -a${MEGA_CTL_ID} | awk -v hide_headers=$OPT_HIDE_HEADERS -F':' '
+  mega_runa -LDInfo -Lall | awk -v hide_headers=$OPT_HIDE_HEADERS -F':' '
   function ltrim(s) { sub(/^[ \t\r\n]+/, "", s); return s }
   function rtrim(s) { sub(/[ \t\r\n]+$/, "", s); return s }
   function trim(s)  { return rtrim(ltrim(s)); }
@@ -403,30 +497,18 @@ mega_cmd_vd_show_list()
   '
 }
 
-
-mega_cmd_vd_show_info()
+mega_cmd_vd_count()
 {
-  mega_run -LDInfo -L"$1" -a${MEGA_CTL_ID}
+  mega_runa -LDGetNum | awk -F': ' '
+  /Number of Virtual Drives/ { print $2 }
+  '
 }
-
-
-mega_cmd_adp_show_info()
-{
-  mega_run -AdpAllInfo -a${MEGA_CTL_ID}
-}
-
 
 mega_cmd_adp_show_count()
 {
   mega_run -adpCount | awk '
   /Controller Count/ { sub(/[^0-9]+/, "", $3); print $3 }
   '
-}
-
-
-mega_cmd_adp_show_log()
-{
-  mega_run -AdpAlILog -a${MEGA_CTL_ID}
 }
 
 
