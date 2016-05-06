@@ -34,7 +34,7 @@ help_commands()
 	    help
 	    pd count
 	    pd list
-	    pd info PD_LIST              Physical drive info.
+	    pd info PD_LIST               Physical drive info.
 	    pd missing show
 	    pd missing mark PD_LIST
 	    pd missing replace ARRAY ROW PD_LIST
@@ -168,7 +168,7 @@ mega_cmd_pd()
       ;;
     info)
       shift
-      mega_runa -PDInfo -PhysDrv $(mega_physdrv "$@")
+      mega_runa -PDInfo -PhysDrv$(mega_physdrv "$@")
       ;;
     missing)
       shift
@@ -180,19 +180,19 @@ mega_cmd_pd()
       ;;
     online)
       shift
-      mega_runa -PDOnline -PhysDrv $(mega_physdrv "$@")
+      mega_runa -PDOnline -PhysDrv$(mega_physdrv "$@")
       ;;
     offline)
       shift
-      mega_runa -PDOffline -PhysDrv $(mega_physdrv "$@")
+      mega_runa -PDOffline -PhysDrv$(mega_physdrv "$@")
       ;;
     makegood)
       shift
-      mega_runa -PDMakeGood -PhysDrv $(mega_physdrv "$@")
+      mega_runa -PDMakeGood -PhysDrv$(mega_physdrv "$@")
       ;;
     makejbod)
       shift
-      mega_runa -PDMakeJBOD -PhysDrv $(mega_physdrv "$@")
+      mega_runa -PDMakeJBOD -PhysDrv$(mega_physdrv "$@")
       ;;
     rebuild)
       shift
@@ -223,13 +223,13 @@ mega_cmd_pd_missing()
       ;;
     mark)
       shift
-      mega_runa -PdMarkMissing -PhysDrv $(mega_physdrv "$@")
+      mega_runa -PdMarkMissing -PhysDrv$(mega_physdrv "$@")
       ;;
     replace)
       local array="$2"
       local row="$3"
       shift 3
-      mega_runa -PdReplaceMissing -PhysDrv $(mega_physdrv "$@") -Array ${array} -Row ${row}
+      mega_runa -PdReplaceMissing -PhysDrv$(mega_physdrv "$@") -Array ${array} -Row ${row}
       ;;
     *)
       help_usage
@@ -241,16 +241,16 @@ mega_cmd_pd_hotspare()
   case "$1" in
     set)
       shift
-      mega_runa -PDHSP -Set -PhysDrv $(mega_physdrv "$@")
+      mega_runa -PDHSP -Set -PhysDrv$(mega_physdrv "$@")
       ;;
     dedicated)
       local array="$2"
       shift 2
-      mega_runa -PDHSP -Set -Dedicated -Array ${array} -PhysDrv $(mega_physdrv "$@")
+      mega_runa -PDHSP -Set -Dedicated -Array ${array} -PhysDrv$(mega_physdrv "$@")
       ;;
     remove)
       shift
-      mega_runa -PDHSP -Rmv -PhysDrv $(mega_physdrv "$@")
+      mega_runa -PDHSP -Rmv -PhysDrv$(mega_physdrv "$@")
       ;;
     *)
       help_usage
@@ -262,15 +262,15 @@ mega_cmd_pd_rebuild()
   case "$1" in
     show)
       shift
-      mega_runa -PDRbld -ShowProg -PhysDrv $(mega_physdrv "$@")
+      mega_runa -PDRbld -ShowProg -PhysDrv$(mega_physdrv "$@")
       ;;
     start)
       shift
-      mega_runa -PDRbld -Start -PhysDrv $(mega_physdrv "$@")
+      mega_runa -PDRbld -Start -PhysDrv$(mega_physdrv "$@")
       ;;
     stop)
       shift
-      mega_runa -PDRbld -Stop -PhysDrv $(mega_physdrv "$@")
+      mega_runa -PDRbld -Stop -PhysDrv$(mega_physdrv "$@")
       ;;
     *)
       help_usage
@@ -282,15 +282,15 @@ mega_cmd_pd_clear()
   case "$1" in
     show)
       shift
-      mega_runa -PDClear -ShowProg -PhysDrv $(mega_physdrv "$@")
+      mega_runa -PDClear -ShowProg -PhysDrv$(mega_physdrv "$@")
       ;;
     start)
       shift
-      mega_runa -PDClear -Start -PhysDrv $(mega_physdrv "$@")
+      mega_runa -PDClear -Start -PhysDrv$(mega_physdrv "$@")
       ;;
     stop)
       shift
-      mega_runa -PDClear -Stop -PhysDrv $(mega_physdrv "$@")
+      mega_runa -PDClear -Stop -PhysDrv$(mega_physdrv "$@")
       ;;
     *)
       help_usage
@@ -302,11 +302,11 @@ mega_cmd_pd_locate()
   case "$1" in
     start)
       shift
-      mega_runa -PdLocate -Start -PhysDrv $(mega_physdrv "$@")
+      mega_runa -PdLocate -Start -PhysDrv$(mega_physdrv "$@")
       ;;
     stop)
       shift
-      mega_runa -PdLocate -Stop -PhysDrv $(mega_physdrv "$@")
+      mega_runa -PdLocate -Stop -PhysDrv$(mega_physdrv "$@")
       ;;
     *)
       help_usage
@@ -318,11 +318,11 @@ mega_cmd_pd_remove()
   case "$1" in
     start)
       shift
-      mega_runa -PdPrpRmv -PhysDrv $(mega_physdrv "$@")
+      mega_runa -PdPrpRmv -PhysDrv$(mega_physdrv "$@")
       ;;
     stop)
       shift
-      mega_runa -PdPrpRmv -UnDo -PhysDrv $(mega_physdrv "$@")
+      mega_runa -PdPrpRmv -UnDo -PhysDrv$(mega_physdrv "$@")
       ;;
     *)
       help_usage
